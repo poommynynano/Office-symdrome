@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: rgba(0, 0, 0, 0); 
+            overflow: hidden;
+            /* จัดให้ตัวละครอยู่ชิดขวาล่างของหน้าต่างแบบพอดี */
+            display: flex;
+            justify-content: flex-end;
+            align-items: flex-end;
+            height: 100vh;
+            box-sizing: border-box;
+            padding: 20px; /* ระยะห่างจากขอบจอ */
+        }
+        .mascot {
+            font-size: 3.5em; /* ปรับให้เล็กลง (จากเดิม 6em) */
+            animation: bounce 2s infinite ease-in-out;
+            user-select: none; /* ไม่ให้เผลอไปคลุมดำโดนตัวอักษร */
+            /* เพิ่มเงาให้มองเห็นชัดขึ้นเวลาพื้นหลังคอมเป็นสีขาว */
+            text-shadow: 2px 2px 8px rgba(0,0,0,0.4); 
+        }
+        @keyframes bounce {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-10px); }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="pet" class="mascot">😊</div>
+
+    <script>
+        const ws = new WebSocket("ws://localhost:8765");
+        const pet = document.getElementById("pet");
+
+        ws.onmessage = function(event) {
+            const data = JSON.parse(event.data);
+            
+            if (!data.is_present) {
+                pet.innerText = "👻"; 
+            } else if (data.warning_level === 0) {
+                pet.innerText = "😊"; 
+            } else if (data.warning_level === 1) {
+                pet.innerText = "🤨"; 
+            } else if (data.warning_level === 2) {
+                pet.innerText = "😱"; 
+            }
+        };
+        ws.onclose = function() {
+            pet.innerText = "😵";
+        };
+    </script>
+</body>
+</html>

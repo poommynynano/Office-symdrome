@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #1e1e2e;
+            color: #cdd6f4;
+            margin: 0;
+            padding: 20px;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .card-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+        .card {
+            background-color: #313244;
+            padding: 20px;
+            border-radius: 15px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+        }
+        .status-box {
+            font-size: 1.5em;
+            font-weight: bold;
+            padding: 15px;
+            text-align: center;
+            border-radius: 8px;
+            background-color: #bac2de;
+            color: #11111b;
+            margin-bottom: 20px;
+            transition: 0.3s;
+        }
+        .data-row {
+            display: flex;
+            justify-content: space-between;
+            margin: 15px 0;
+            font-size: 1.2em;
+            border-bottom: 1px solid #45475a;
+            padding-bottom: 8px;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="header">
+        <h1>🎮 Office Syndrome AI Dashboard</h1>
+        <p>ยินดีต้อนรับสู่ศูนย์ควบคุมสุขภาพของคุณ</p>
+    </div>
+
+    <div id="statusBox" class="status-box">รอการเชื่อมต่อ...</div>
+
+    <div class="card-grid">
+        <div class="card">
+            <h3>🏆 รางวัล & สถิติ</h3>
+            <div class="data-row">
+                <span>⭐ EXP:</span>
+                <span id="expValue" style="color: #f9e2af; font-weight: bold;">0</span>
+            </div>
+            <div class="data-row">
+                <span>⏱️ เวลานั่งหน้าจอ:</span>
+                <span id="timeValue">00:00</span>
+            </div>
+        </div>
+
+        <div class="card">
+            <h3>⚙️ AI Sensors</h3>
+            <div class="data-row">
+                <span>👀 กำลังมองจอ:</span>
+                <span id="lookingValue">➖</span>
+            </div>
+            <div class="data-row">
+                <span>👁️ ลืมตา:</span>
+                <span id="eyesValue">➖</span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // เชื่อมต่อข้อมูลจาก Python AI (ทั้ง Dashboard และ Mascot จะรับข้อมูลเดียวกัน)
+    const ws = new WebSocket("ws://localhost:8765");
+
+    const statusBox = document.getElementById("statusBox");
+    const expValue = document.getElementById("expValue");
+    const timeValue = document.getElementById("timeValue");
+    const lookingValue = document.getElementById("lookingValue");
+    const eyesValue = document.getElementById("eyesValue");
+
+    ws.onopen = () => {
+        statusBox.innerText = "เชื่อมต่อกล้องสำเร็จ!";
+        statusBox.style.backgroundColor = "#89b4fa";
+    };
+
+    ws.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+
+        // จัดการเวลา
+        const totalSeconds = Math.floor(data.screen_time);
+        const minutes = String(Math.floor(totalSeconds / 60)).padStart(2, '0');
+        const seconds = String(totalSeconds % 60).padStart(2, '0');
+        timeValue.innerText = `${minutes}:${seconds}`;
+
+        // จัดการข้อมูลตัวเลข
+        expValue.innerText = Math.floor(data.exp).toLocaleString();
+        lookingValue.innerText = data.is_looking ? "✅" : "❌";
+        eyesValue.innerText = data.is_eyes_open ? "✅" : "❌";
+        statusBox.innerText = data.status;
+
+        // เปลี่ยนสีตามระดับการเตือน
+        if (!data.is_present) {
+            statusBox.style.backgroundColor = "#bac2de";
+        } else if (data.warning_level === 0) {
+            statusBox.style.backgroundColor = "#a6e3a1"; // เขียว
+        } else if (data.warning_level === 1) {
+            statusBox.style.backgroundColor = "#f9e2af"; // เหลือง
+        } else if (data.warning_level === 2) {
+            statusBox.style.backgroundColor = "#f38ba8"; // แดง
+        }
+    };
+
+    ws.onclose = () => {
+        statusBox.innerText = "AI Backend ปิดการทำงาน";
+        statusBox.style.backgroundColor = "#f38ba8";
+    };
+</script>
+
+</body>
+</html>

@@ -1,0 +1,7 @@
+# ไม่เอาโฟลเดอร์ของ Node.js
+node_modules/
+
+# ไม่เอาไฟล์แคชและโฟลเดอร์จำลองของ Python
+__pycache__/
+.venv/
+venv/

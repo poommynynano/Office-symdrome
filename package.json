@@ -1,0 +1,25 @@
+{
+  "name": "office-symdrome",
+  "version": "1.0.0",
+  "description": "Coding-project",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron main.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/poommynynano/Office-symdrome.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/poommynynano/Office-symdrome/issues"
+  },
+  "homepage": "https://github.com/poommynynano/Office-symdrome#readme",
+  "devDependencies": {
+    "electron": "^42.3.1"
+  }
+}
