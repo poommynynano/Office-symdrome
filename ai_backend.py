@@ -6,9 +6,6 @@ import json
 import asyncio
 import websockets
 
-# ---------------------------------------------------------
-# 1. ฟังก์ชันคำนวณคณิตศาสตร์ (Ergonomics & EAR)
-# ---------------------------------------------------------
 def get_vertical_angle(p1, p2):
     dx = p1[0] - p2[0]
     dy = p2[1] - p1[1]
@@ -22,9 +19,6 @@ def get_ear(eye_points):
     if h1 == 0: return 0.0
     return (v1 + v2) / (2.0 * h1)
 
-# ---------------------------------------------------------
-# 2. ตัวแปรเก็บสถานะส่วนกลาง (State) เพื่อส่งให้มาสคอต
-# ---------------------------------------------------------
 app_state = {
     "status": "STARTING...",
     "is_present": False,
@@ -32,12 +26,10 @@ app_state = {
     "is_eyes_open": False,
     "screen_time": 0,
     "exp": 0,
-    "warning_level": 0 # 0=ปกติ, 1=เตือนเบาๆ, 2=เตือนหนัก (เอาไว้เปลี่ยนหน้าตามาสคอต)
+    "warning_level": 0,
+    "camera_active": True # เพิ่มตัวแปรสถานะกล้อง
 }
 
-# ---------------------------------------------------------
-# 3. ฟังก์ชัน AI ประมวลผลกล้อง (ทำงานเบื้องหลัง)
-# ---------------------------------------------------------
 async def process_camera():
     mp_pose = mp.solutions.pose
     pose = mp_pose.Pose(min_detection_confidence=0.5, min_tracking_confidence=0.5)
@@ -46,13 +38,32 @@ async def process_camera():
     
     cap = cv2.VideoCapture(0)
     last_time = time.time()
-    
-    EAR_THRESHOLD = 0.15
+    EAR_THRESHOLD = 0.15 
 
     while True:
+        # 1. เช็คว่าผู้ใช้สั่งปิดกล้องหรือไม่
+        if not app_state.get("camera_active", True):
+            if cap is not None and cap.isOpened():
+                cap.release() # ปล่อยฮาร์ดแวร์ให้แอปอื่นใช้งาน
+                cap = None
+            app_state["status"] = "CAMERA PAUSED (กล้องว่าง)"
+            app_state["is_present"] = False
+            app_state["warning_level"] = 0
+            await asyncio.sleep(0.5)
+            continue
+            
+        # 2. ถ้าสั่งเปิดกล้อง แต่กล้องยังไม่ได้เปิด
+        if cap is None or not cap.isOpened():
+            cap = cv2.VideoCapture(0)
+            last_time = time.time() # รีเซ็ตเวลาเพื่อไม่ให้ EXP พุ่งตอนเปิดกล้อง
+            
         success, frame = cap.read()
+        
+        # 3. ถ้าดึงภาพไม่ได้ (อาจโดน Zoom แย่งไป)
         if not success:
-            await asyncio.sleep(0.1)
+            app_state["status"] = "CAMERA BUSY (กล้องถูกใช้งาน)"
+            app_state["warning_level"] = 1
+            await asyncio.sleep(1)
             continue
 
         current_time = time.time()
@@ -72,7 +83,6 @@ async def process_camera():
         current_status = "PERFECT POSTURE"
         warning_level = 0
 
-        # ตรวจจับการหลับตา (Face Mesh)
         if face_results.multi_face_landmarks:
             face_landmarks = face_results.multi_face_landmarks[0].landmark
             left_eye_indices = [33, 160, 158, 133, 153, 144]
@@ -85,7 +95,6 @@ async def process_camera():
             if avg_ear < EAR_THRESHOLD:
                 is_eyes_open = False
 
-        # ตรวจจับท่านั่ง (Pose)
         if pose_results.pose_landmarks:
             is_present = True
             landmarks = pose_results.pose_landmarks.landmark
@@ -109,7 +118,6 @@ async def process_camera():
                 if head_turn_ratio > 3.0 or head_turn_ratio < 0.3:
                     is_looking = False
 
-                # ลอจิกการแจ้งเตือน
                 if not is_looking:
                     current_status = "NOT LOOKING AT SCREEN"
                     warning_level = 1
@@ -129,8 +137,7 @@ async def process_camera():
                     current_status = "SLOUCHING (BACK)!"
                     warning_level = 2
                 else:
-                    # ถ้านั่งตัวตรง มองจอ ให้ EXP เพิ่มขึ้นเรื่อยๆ
-                    app_state["exp"] += (10 * dt) # เพิ่ม 10 EXP ต่อวินาที (จำลอง)
+                    app_state["exp"] += (10 * dt) 
 
             except Exception:
                 pass
@@ -138,46 +145,46 @@ async def process_camera():
             current_status = "NO PERSON DETECTED"
             warning_level = 0
 
-        # อัปเดตเวลา Screen Time
         if is_looking and is_eyes_open and is_present:
             app_state["screen_time"] += dt
 
-        # อัปเดตสถานะส่วนกลาง
         app_state["status"] = current_status
         app_state["is_present"] = is_present
         app_state["is_looking"] = is_looking
         app_state["is_eyes_open"] = is_eyes_open
         app_state["warning_level"] = warning_level
 
-        # --- สำคัญ: ปล่อยให้ลูป Async เดินหน้า ---
-        # (เราเอา cv2.imshow ออก เพื่อให้มันรันอยู่เบื้องหลังแบบไม่มีหน้าต่าง)
         await asyncio.sleep(0.01)
 
-# ---------------------------------------------------------
-# 4. ฟังก์ชัน WebSocket (ทำหน้าที่ส่งข้อมูลให้ UI)
-# ---------------------------------------------------------
 async def websocket_handler(websocket):
     print("UI Frontend Connected!")
-    try:
-        while True:
-            # แปลงข้อมูลใน Dictionary เป็นข้อความ JSON แล้วส่งออกไป
-            payload = json.dumps(app_state)
-            await websocket.send(payload)
-            # ส่งข้อมูลอัปเดตไปที่ UI ทุกๆ 0.1 วินาที (10 Hz)
-            await asyncio.sleep(0.1)
-    except websockets.exceptions.ConnectionClosed:
-        print("UI Frontend Disconnected.")
+    
+    # ฟังก์ชันรับคำสั่งจาก UI (เช็คว่ากดปิด/เปิดกล้องไหม)
+    async def receive_messages():
+        try:
+            async for message in websocket:
+                data = json.loads(message)
+                if data.get("action") == "toggle_camera":
+                    app_state["camera_active"] = not app_state["camera_active"]
+        except websockets.exceptions.ConnectionClosed:
+            pass
 
-# ---------------------------------------------------------
-# 5. ฟังก์ชัน Main (สั่งรันทั้ง AI และ WebSocket พร้อมกัน)
-# ---------------------------------------------------------
+    # ฟังก์ชันส่งข้อมูลให้ UI
+    async def send_messages():
+        try:
+            while True:
+                await websocket.send(json.dumps(app_state))
+                await asyncio.sleep(0.1)
+        except websockets.exceptions.ConnectionClosed:
+            print("UI Frontend Disconnected.")
+
+    # รันทั้ง 2 ฟังก์ชันพร้อมกัน
+    await asyncio.gather(receive_messages(), send_messages())
+
 async def main():
     print("Starting Edge AI Backend...")
-    # เปิดเซิร์ฟเวอร์ WebSocket ที่พอร์ต 8765
     server = await websockets.serve(websocket_handler, "localhost", 8765)
     print("WebSocket Server running on ws://localhost:8765")
-    
-    # รันกล้อง AI
     await process_camera()
 
 if __name__ == "__main__":
