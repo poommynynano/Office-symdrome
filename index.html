@@ -3,12 +3,36 @@
 <head>
     <meta charset="UTF-8">
     <style>
+        /* 1. ระบบตัวแปรสี (CSS Variables) สำหรับจัดการโหมดมืด/สว่าง */
+        :root {
+            /* โหมดสว่าง (Light Mode) เป็นค่าเริ่มต้น */
+            --bg-color: #f4f5f7;
+            --text-color: #4c4f69;
+            --card-bg: #ffffff;
+            --border-color: #ccd0da;
+            --status-text: #11111b;
+            --btn-bg: #1e66f5;
+            --btn-text: #ffffff;
+        }
+
+        [data-theme="dark"] {
+            /* โหมดมืด (Dark Mode) */
+            --bg-color: #1e1e2e;
+            --text-color: #cdd6f4;
+            --card-bg: #313244;
+            --border-color: #45475a;
+            --status-text: #11111b;
+            --btn-bg: #89b4fa;
+            --btn-text: #1e1e2e;
+        }
+
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background-color: #1e1e2e;
-            color: #cdd6f4;
+            background-color: var(--bg-color);
+            color: var(--text-color);
             margin: 0;
             padding: 20px;
+            transition: background-color 0.3s, color 0.3s; /* แอนิเมชันตอนสลับธีม */
         }
         .container {
             max-width: 800px;
@@ -22,12 +46,14 @@
             display: grid;
             grid-template-columns: 1fr 1fr;
             gap: 20px;
+            margin-bottom: 20px;
         }
         .card {
-            background-color: #313244;
+            background-color: var(--card-bg);
             padding: 20px;
             border-radius: 15px;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            transition: background-color 0.3s;
         }
         .status-box {
             font-size: 1.5em;
@@ -36,17 +62,37 @@
             text-align: center;
             border-radius: 8px;
             background-color: #bac2de;
-            color: #11111b;
+            color: var(--status-text);
             margin-bottom: 20px;
             transition: 0.3s;
         }
         .data-row {
             display: flex;
             justify-content: space-between;
+            align-items: center;
             margin: 15px 0;
-            font-size: 1.2em;
-            border-bottom: 1px solid #45475a;
+            font-size: 1.1em;
+            border-bottom: 1px solid var(--border-color);
             padding-bottom: 8px;
+        }
+        
+        /* สไตล์สำหรับปุ่มและสไลเดอร์ */
+        .btn {
+            background-color: var(--btn-bg);
+            color: var(--btn-text);
+            border: none;
+            padding: 8px 15px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 0.9em;
+            font-weight: bold;
+            transition: opacity 0.2s;
+        }
+        .btn:hover { opacity: 0.8; }
+        
+        input[type=range] {
+            width: 120px;
+            cursor: pointer;
         }
     </style>
 </head>
@@ -65,16 +111,12 @@
             <h3>🏆 รางวัล & สถิติ</h3>
             <div class="data-row">
                 <span>⭐ EXP:</span>
-                <span id="expValue" style="color: #f9e2af; font-weight: bold;">0</span>
+                <span id="expValue" style="color: #f9e2af; font-weight: bold; text-shadow: 1px 1px 2px rgba(0,0,0,0.3);">0</span>
             </div>
             <div class="data-row">
                 <span>⏱️ เวลานั่งหน้าจอ:</span>
                 <span id="timeValue">00:00</span>
             </div>
-        </div>
-
-        <div class="card">
-            <h3>⚙️ AI Sensors</h3>
             <div class="data-row">
                 <span>👀 กำลังมองจอ:</span>
                 <span id="lookingValue">➖</span>
@@ -84,18 +126,89 @@
                 <span id="eyesValue">➖</span>
             </div>
         </div>
+
+        <div class="card">
+            <h3>⚙️ การตั้งค่าทั่วไป</h3>
+            
+            <div class="data-row">
+                <span>🌓 ธีมหน้าจอ:</span>
+                <button id="themeToggleBtn" class="btn">เปลี่ยนโหมด</button>
+            </div>
+            
+            <div class="data-row" style="flex-direction: column; align-items: flex-start;">
+                <div style="width: 100%; display: flex; justify-content: space-between; margin-bottom: 10px;">
+                    <span>🔊 เสียงแจ้งเตือน:</span>
+                    <span id="volumeText">50%</span>
+                </div>
+                <input type="range" id="volumeSlider" min="0" max="100" value="50" style="width: 100%;">
+            </div>
+            
+            <div class="data-row">
+                <span style="font-size: 0.9em; color: gray;">*การตั้งค่าจะถูกบันทึกอัตโนมัติ</span>
+            </div>
+        </div>
     </div>
 </div>
 
 <script>
-    // เชื่อมต่อข้อมูลจาก Python AI (ทั้ง Dashboard และ Mascot จะรับข้อมูลเดียวกัน)
-    const ws = new WebSocket("ws://localhost:8765");
+    // ---------------------------------------------------------
+    // 1. ระบบจัดการการตั้งค่า (Settings & LocalStorage)
+    // ---------------------------------------------------------
+    const themeToggleBtn = document.getElementById('themeToggleBtn');
+    const volumeSlider = document.getElementById('volumeSlider');
+    const volumeText = document.getElementById('volumeText');
+    
+    // โหลดการตั้งค่าเดิม (ถ้ามี) หรือใช้ค่าเริ่มต้น
+    let currentTheme = localStorage.getItem('appTheme') || 'dark';
+    let currentVolume = localStorage.getItem('alertVolume') ? parseFloat(localStorage.getItem('alertVolume')) : 0.5;
 
+    // นำการตั้งค่าไปใช้งานจริง
+    document.documentElement.setAttribute('data-theme', currentTheme);
+    themeToggleBtn.innerText = currentTheme === 'dark' ? '☀️ โหมดสว่าง' : '🌙 โหมดมืด';
+    
+    volumeSlider.value = currentVolume * 100;
+    volumeText.innerText = `${Math.round(currentVolume * 100)}%`;
+
+    // สร้างระบบเสียงเตือน
+    const alertSound = new Audio('https://actions.google.com/sounds/v1/alarms/beep_short.ogg');
+    alertSound.volume = currentVolume; // ตั้งความดังตามค่าที่โหลดมา
+
+    // อีเวนต์: เมื่อกดปุ่มสลับธีม
+    themeToggleBtn.addEventListener('click', () => {
+        currentTheme = currentTheme === 'dark' ? 'light' : 'dark';
+        document.documentElement.setAttribute('data-theme', currentTheme);
+        themeToggleBtn.innerText = currentTheme === 'dark' ? '☀️ โหมดสว่าง' : '🌙 โหมดมืด';
+        localStorage.setItem('appTheme', currentTheme); // บันทึก
+    });
+
+    // อีเวนต์: เมื่อเลื่อนสไลเดอร์ปรับเสียง
+    volumeSlider.addEventListener('input', (e) => {
+        currentVolume = e.target.value / 100;
+        alertSound.volume = currentVolume;
+        volumeText.innerText = `${e.target.value}%`;
+        localStorage.setItem('alertVolume', currentVolume); // บันทึก
+    });
+    
+    // อีเวนต์: เมื่อปล่อยเมาส์จากสไลเดอร์ ให้ลองเล่นเสียงให้ผู้ใช้ฟัง 1 ที
+    volumeSlider.addEventListener('change', () => {
+        alertSound.play().catch(e => console.log(e));
+    });
+
+    // ---------------------------------------------------------
+    // 2. ระบบเซนเซอร์ AI (เชื่อมต่อ WebSocket)
+    // ---------------------------------------------------------
+    const ws = new WebSocket("ws://localhost:8765");
     const statusBox = document.getElementById("statusBox");
     const expValue = document.getElementById("expValue");
     const timeValue = document.getElementById("timeValue");
     const lookingValue = document.getElementById("lookingValue");
     const eyesValue = document.getElementById("eyesValue");
+
+    let lastWarningLevel = 0; 
+    
+    if (Notification.permission !== "granted") {
+        Notification.requestPermission();
+    }
 
     ws.onopen = () => {
         statusBox.innerText = "เชื่อมต่อกล้องสำเร็จ!";
@@ -111,22 +224,35 @@
         const seconds = String(totalSeconds % 60).padStart(2, '0');
         timeValue.innerText = `${minutes}:${seconds}`;
 
-        // จัดการข้อมูลตัวเลข
+        // จัดการข้อมูล
         expValue.innerText = Math.floor(data.exp).toLocaleString();
         lookingValue.innerText = data.is_looking ? "✅" : "❌";
         eyesValue.innerText = data.is_eyes_open ? "✅" : "❌";
         statusBox.innerText = data.status;
 
-        // เปลี่ยนสีตามระดับการเตือน
+        // เปลี่ยนสีกล่องข้อความ
         if (!data.is_present) {
             statusBox.style.backgroundColor = "#bac2de";
         } else if (data.warning_level === 0) {
-            statusBox.style.backgroundColor = "#a6e3a1"; // เขียว
+            statusBox.style.backgroundColor = "#a6e3a1"; 
         } else if (data.warning_level === 1) {
-            statusBox.style.backgroundColor = "#f9e2af"; // เหลือง
+            statusBox.style.backgroundColor = "#f9e2af"; 
         } else if (data.warning_level === 2) {
-            statusBox.style.backgroundColor = "#f38ba8"; // แดง
+            statusBox.style.backgroundColor = "#f38ba8"; 
         }
+
+        // ส่งเสียงเตือนเฉพาะเมื่อเพิ่งเกิดสถานะอันตราย (ระดับ 2)
+        if (data.warning_level === 2 && lastWarningLevel !== 2) {
+            alertSound.play().catch(e => console.log("รอให้คลิกที่แอปก่อนเล่นเสียง"));
+            
+            if (Notification.permission === "granted") {
+                new Notification("⚠️ Office Syndrome AI", {
+                    body: data.status + " กรุณาปรับท่านั่งด่วนครับ!",
+                    silent: true 
+                });
+            }
+        }
+        lastWarningLevel = data.warning_level;
     };
 
     ws.onclose = () => {
